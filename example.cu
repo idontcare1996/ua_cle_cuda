@@ -13,10 +13,12 @@ void do_the_math ()
 
 int main() {   
 
-        BMP* bmp;
-        UCHAR r, g, b;
-        UINT width, height;
-        UINT x, y;
+    BMP* bmp;
+    UCHAR r, g, b;
+    UINT width, height;
+    UINT x, y;
+
+    
  
     
     /* Read an image file */
@@ -27,6 +29,11 @@ int main() {
     /* Get image's dimensions */
     width = BMP_GetWidth( bmp );
     height = BMP_GetHeight( bmp );
+
+
+    // Create the array where the rgb values will be stored:
+    float host_image_array[width][height];
+
     /* Iterate through all the image's pixels */
     for ( x = 0 ; x < width ; ++x )
     {
@@ -34,8 +41,12 @@ int main() {
         {
             /* Get pixel's RGB values */
             BMP_GetPixelRGB( bmp, x, y, &r, &g, &b );
-            /* Invert RGB values */
-            BMP_SetPixelRGB( bmp, x, y, 255 - r, 255 - g, 255 - b );
+            // Put the rgb values inside a single value, to send to the array
+            float rgb = (1000000*(int)r)+(1000*(int)g)+((int)b);
+            printf(" %f \n", rgb);
+            
+            // /* Invert RGB values */
+            // BMP_SetPixelRGB( bmp, x, y, 255 - r, 255 - g, 255 - b );
         }
     }
     /* Save result */
