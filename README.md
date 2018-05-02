@@ -8,3 +8,5 @@ Place ``` image_input.bmp ``` in the root directory, and run ``` ./example ``` .
 
 The file ``` image_output.bmp ``` should be created in the root directory with inverted colours.
 
+Note: this project is beeing tested on a _NVIDIA GeForce GTX 480_. 
+
