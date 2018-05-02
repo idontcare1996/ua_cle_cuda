@@ -97,9 +97,10 @@ int main() {
         UCHAR r, g, b;
         UINT width, height;
         UINT x, y;
-
+ 
+    
     /* Read an image file */
-    bmp = BMP_ReadFile( argv[ 1 ] );
+    bmp = BMP_ReadFile( "image_input.bmp" );
     BMP_CHECK_ERROR( stderr, -1 ); 
     /* If an error has occurred, notify and exit */
     /* Get image's dimensions */
@@ -117,10 +118,10 @@ int main() {
         }
     }
     /* Save result */
-    BMP_WriteFile( bmp, argv[ 2 ] );
+    BMP_WriteFile( bmp, "image_output.bmp" );
     BMP_CHECK_ERROR( stderr, -2 );
     /* Free all memory allocated for the image */
     BMP_Free( bmp );    
-
+    
     return 0;
 }
