@@ -3,8 +3,7 @@
 #include <math.h>
 extern "C"
 {
-    #include "qdbmp.h"
-    
+    #include "qdbmp.h"    
 }
 #include <device_launch_parameters.h>
 //#include <conio.h>
@@ -13,8 +12,6 @@ extern "C"
 #define BLOCKSIZE_y 8
 
 #define BETWEEN(value, min, max) (value < max && value > min)
-
-
 
 /*****************/
 /* CUDA MEMCHECK */
@@ -33,7 +30,39 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort =
 /*******************/
 /* iDivUp FUNCTION */
 /*******************/
-UINT iDivUp(UINT hostPtr, UINT b){ return ((hostPtr % b) != 0) ? (hostPtr / b + 1) : (hostPtr / b); }
+UINT iDivUp(UINT hostPtr, UINT b)
+{
+     return ((hostPtr % b) != 0) ? (hostPtr / b + 1) : (hostPtr / b); 
+}
+
+/********************************************************************/
+/* Transform RGB (24Bit) (0-255255255) to Grey value (0-1) FUNCTION */
+/********************************************************************/
+
+__host__ __device__ float greymaker (UINT rgb)
+{  
+    int red;
+    int green;
+    int blue;
+    //int greyscaled;
+
+    float red_float;
+    float green_float;
+    float blue_float;
+    float grey;
+
+    red = rgb/1000000;
+    green = (rgb/1000) - (red*1000);
+    blue = rgb - (red*1000000) - (green*1000);
+
+    red_float = (float) (red)/256;
+    green_float = (float) (green)/256;
+    blue_float = (float) (blue)/256;
+
+    grey = (0.299 * red_float)+ (0.587 * green_float) + (0.114 * blue_float);
+
+    return grey;
+}
 
 /******************/
 /* TEST KERNEL 2D */
@@ -43,16 +72,21 @@ __global__ void test_kernel_2D(UINT *devPtr, size_t pitch, int Ncols, int Nrows)
     int    tidx = blockIdx.x*blockDim.x + threadIdx.x;
     int    tidy = blockIdx.y*blockDim.y + threadIdx.y;
     
-    int value;
-    
+    UINT rgb;
     
     if ((tidx < Ncols) && (tidy < Nrows))
     {
-        UINT *row_a = (UINT *)((char*)devPtr + tidy * pitch);
-        
-        
-        row_a[tidx] = 1 + row_a[tidx];
+        UINT *row_a = (UINT *)((char*)devPtr + tidy * pitch);      
 
+        rgb = row_a[tidx];
+       
+        greyscaled = (int)((greymaker(rgb))*256);
+
+        printf(" %f %i \n",grey,greyscaled);
+
+        rgb= (greyscaled*1000000) + (greyscaled * 1000) + greyscaled;
+
+        row_a[tidx] = rgb;
         
     }
     
@@ -102,10 +136,6 @@ int main() {
         }
     }
 
-    // Copy the array to the device
-
-    
-    
     UINT *devPtr;
     size_t pitch;
    
@@ -125,16 +155,15 @@ int main() {
     {
         for (int j = 0; j < Ncols; j++)
         {
-            printf("row %i column %i value %i \n", i, j, hostPtr[i][j]);
-            UINT rgb_output = hostPtr[i][j];
-            float rgb_output_float = rgb_output;
-            r = trunc( rgb_output_float/1000000 );
-            g = trunc ( (rgb_output_float/1000) - (r*1000) );
-            b = rgb_output_float - (r*1000000) - (g*1000);
-            BMP_SetPixelRGB( bmp, j, i,(int)r, (int)g, (int)b);
+           // printf("row %i column %i value %i \n", i, j, hostPtr[i][j]);
+            UINT rgb_output = hostPtr[i][j];            
+            r = rgb_output/1000000;
+            g =  (rgb_output/1000) - (r*1000) ;
+            b = rgb_output - (r*1000000) - (g*1000);
+            BMP_SetPixelRGB( bmp, i, j,(int)r, (int)g, (int)b);
         }
     }
-    printf(" %u %u ", width, height);
+    printf(" Width: %u Height: %u \n", width, height);
     printf(" RGB Value at 20:20 %i \n", hostPtr[0][16]);
     /* Save result */
     BMP_WriteFile( bmp, "image_output.bmp" );
