@@ -10,7 +10,7 @@ extern "C"
 //#include <conio.h>
 
 #define BLOCKSIZE_x 8
-#define BLOCKSIZE_y 1
+#define BLOCKSIZE_y 8
 
 #define BETWEEN(value, min, max) (value < max && value > min)
 
@@ -38,7 +38,7 @@ UINT iDivUp(UINT hostPtr, UINT b){ return ((hostPtr % b) != 0) ? (hostPtr / b + 
 /******************/
 /* TEST KERNEL 2D */
 /******************/
-__global__ void test_kernel_2D(float *devPtr, size_t pitch, int Ncols, int Nrows)
+__global__ void test_kernel_2D(UINT *devPtr, size_t pitch, int Ncols, int Nrows) 
 {
     int    tidx = blockIdx.x*blockDim.x + threadIdx.x;
     int    tidy = blockIdx.y*blockDim.y + threadIdx.y;
@@ -48,10 +48,10 @@ __global__ void test_kernel_2D(float *devPtr, size_t pitch, int Ncols, int Nrows
     
     if ((tidx < Ncols) && (tidy < Nrows))
     {
-        float *row_a = (float *)((char*)devPtr + tidy * pitch);
+        UINT *row_a = (UINT *)((char*)devPtr + tidy * pitch);
         
         
-        row_a[tidx] = (row_a[tidx]);
+        row_a[tidx] = 1 + row_a[tidx];
 
         
     }
@@ -106,30 +106,31 @@ int main() {
 
     
     
-    float *devPtr;
+    UINT *devPtr;
     size_t pitch;
    
-    gpuErrchk(cudaMallocPitch(&devPtr, &pitch, Ncols * sizeof(float), Nrows));
-    gpuErrchk(cudaMemcpy2D(devPtr, pitch, hostPtr, Ncols*sizeof(float), Ncols*sizeof(float), Nrows, cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMallocPitch(&devPtr, &pitch, Ncols * sizeof(UINT), Nrows));
+    gpuErrchk(cudaMemcpy2D(devPtr, pitch, hostPtr, Ncols*sizeof(UINT), Ncols*sizeof(UINT), Nrows, cudaMemcpyHostToDevice));
 
     dim3 gridSize(iDivUp(Ncols, BLOCKSIZE_x), iDivUp(Nrows, BLOCKSIZE_y));
     dim3 blockSize(BLOCKSIZE_y, BLOCKSIZE_x);
 
-    test_kernel_2D << <16, 16 >> >(devPtr, pitch,Ncols,Nrows);
+    test_kernel_2D << <gridSize, blockSize >> >(devPtr, pitch,Ncols,Nrows);
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
 
-    gpuErrchk(cudaMemcpy2D(hostPtr, Ncols * sizeof(float), devPtr, pitch, Ncols * sizeof(float), Nrows, cudaMemcpyDeviceToHost));
+    gpuErrchk(cudaMemcpy2D(hostPtr, Ncols * sizeof(UINT), devPtr, pitch, Ncols * sizeof(UINT), Nrows, cudaMemcpyDeviceToHost));
 
     for (int i = 0; i < Nrows; i++) 
     {
         for (int j = 0; j < Ncols; j++)
         {
             printf("row %i column %i value %i \n", i, j, hostPtr[i][j]);
-            float rgb_output = hostPtr[i][j];
-            r = trunc( rgb_output/1000000 );
-            g = trunc ( (rgb_output/1000) - (r*1000) );
-            b = rgb_output - (r*1000000) - (g*1000);
+            UINT rgb_output = hostPtr[i][j];
+            float rgb_output_float = rgb_output;
+            r = trunc( rgb_output_float/1000000 );
+            g = trunc ( (rgb_output_float/1000) - (r*1000) );
+            b = rgb_output_float - (r*1000000) - (g*1000);
             BMP_SetPixelRGB( bmp, j, i,(int)r, (int)g, (int)b);
         }
     }
