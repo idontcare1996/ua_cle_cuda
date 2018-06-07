@@ -72,21 +72,41 @@ __global__ void test_kernel_2D(UINT *devPtr, size_t pitch, int Ncols, int Nrows)
     int    tidx = blockIdx.x*blockDim.x + threadIdx.x;
     int    tidy = blockIdx.y*blockDim.y + threadIdx.y;
     
+    int greyscaled;
     UINT rgb;
+    int i;
+    int j;
+    int greys[9];
     
     if ((tidx < Ncols) && (tidy < Nrows))
     {
-        UINT *row_a = (UINT *)((char*)devPtr + tidy * pitch);      
+        for (i=1;i<tidy-1;i++);
+        {
 
-        rgb = row_a[tidx];
-       
-        greyscaled = (int)((greymaker(rgb))*256);
+            printf(" i=%i ", i);
 
-        printf(" %f %i \n",grey,greyscaled);
+            UINT *row_a = (UINT *)((char*)devPtr + (i-1) * pitch);
+            UINT *row_b = (UINT *)((char*)devPtr + (i) * pitch);
+            UINT *row_c = (UINT *)((char*)devPtr + (i+1) * pitch);
 
-        rgb= (greyscaled*1000000) + (greyscaled * 1000) + greyscaled;
+            /*
+            rgb = row_a[1];
+            greyscaled = (int)((greymaker(rgb))*256);
 
-        row_a[tidx] = rgb;
+            rgb = (greyscaled*1000000) + (greyscaled * 1000) + greyscaled;
+
+            */
+
+            for(j=1;j<tidx-1;j++)
+            {
+            row_a[j-1] = 255255000;
+            row_b[j] = 255000000;
+            row_c[j+1] = 000255000;
+            }
+
+           
+           
+        }
         
     }
     
