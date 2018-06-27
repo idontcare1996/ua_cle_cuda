@@ -266,11 +266,25 @@ __global__ void wrf_textures(float* devMPPtr, float * devMPtr, int pitch, int wi
     }
 }
 
-int main( int argc,char *argv[] )
+int main( int argc, char *argv[] )
 {
+
+   
+
+    // Handle arguments    
+    if (argc != 4)
+    {
+        printf(KRED"\n\n [ERROR] Wrong number of arguments!\n"RESET);  
+        printf(" [INFO] Arguments: ./tex [filtersize(5,9,21 or 25)] [input_image] [output_image].\n ");
+        printf("    Example: ./tex 25 image.bmp image.bmp");
+        return 1;
+    }
+    long filter_grid_size_long = strtol(argv[1], NULL, 10); // Set the filter size based on argument.
+    
+    
     // Some variables
     int width,height;           // Declaring for later assignment
-    int filter_grid_size = 25;  //Size of the filter (5,9,21,25);
+    int filter_grid_size = (int) filter_grid_size_long; //Size of the filter (5,9,21,25);
 
     int ir,ig,ib;               // Placeholder for RGB decomposition/composition in int
     float fr,fg,fb;             // Placeholder for RGB decomposition/composition in float   
@@ -282,8 +296,8 @@ int main( int argc,char *argv[] )
 
     /* Read an image file */
     
-    printf(" [INFO] Reading the image file...\n");    
-    bmp = BMP_ReadFile( "image.bmp" );
+    printf("\n\n  [INFO] Reading the image file "KCYN"(%s)...\n"RESET, argv[2]);    
+    bmp = BMP_ReadFile( argv[2] );
     
     
     BMP_CHECK_ERROR( stderr, -1 ); 
@@ -299,7 +313,7 @@ int main( int argc,char *argv[] )
     width = (int) Ncols;
     height = (int) Nrows;
 
-    printf(" [INFO] Image: Width: "KGRN"%i"RESET"   Height: "KGRN"%i"RESET"\n",width,height); 
+    printf(" [INFO] Image: Width: "KCYN"%i"RESET"   Height: "KCYN"%i"RESET"\n",width,height); 
     
     /* Define memory needed for image */
     // memory size
@@ -404,7 +418,8 @@ int main( int argc,char *argv[] )
     // Launch the Kernel //
     /*********************/
      
-    printf(" [INFO] Copying data to device and reading it back... \n");
+    printf(" [INFO] Launching the Kernel! \n");
+    printf(" [INFO] Filter size = "KGRN"%i \n",filter_grid_size);
     wrf_textures<<<gridSize,blockSize>>>(devMPPtr, devMPtr, pitch,width,height,filter_grid_size);
     
     // Check for errors
@@ -440,8 +455,8 @@ int main( int argc,char *argv[] )
     printf(KGRN" [GOOD] Done! \n"RESET);
 
     // Write the resulting image to a file:
-    printf(" [INFO] Writing results to file... \n");
-    BMP_WriteFile( bmp, "image.bmp" );
+    printf(" [INFO] Writing results to file "KCYN"(%s)... \n"RESET,argv[3]);
+    BMP_WriteFile( bmp, argv[3] );
     
     // Check for errors
     BMP_CHECK_ERROR( stderr, -2 );
@@ -450,7 +465,7 @@ int main( int argc,char *argv[] )
     // Free all memory allocated for the image
     BMP_Free( bmp );   
 
-    printf(KGRN" [GOOD] Program Terminated Successfully! \n"RESET);
+    printf(KGRN" [GOOD] Program Terminated Successfully! \n \n \n"RESET);
 
     return(0);
 }

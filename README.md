@@ -4,8 +4,8 @@ Large Scale Computation Assignment using CUDA to ranked filter an image.
 
 Compile with:  ```nvcc qdbmp.c -o tex tex.cu -Wno-deprecated-gpu-targets```
 
-Place ```image.bmp``` in the root directory, and run ```./tex``` .
+Run with ```./tex [filter_size] [input_image.bmp] [output_image.bmp]``` where _filter_size_ is an integer (5,9,21 or 25).
 
-The file ```image.bmp``` should appear modified in the root directory with the 5x5 filter applied.
+Example: ```./tex 25 image.bmp image.bmp```
 
 Note: this project is beeing tested on a _NVIDIA GeForce GTX 480_.
