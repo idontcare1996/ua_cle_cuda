@@ -1,26 +1,42 @@
-#include<stdio.h>
-#include<stdlib.h>
-#include<cuda.h>
-#include<iostream>
+//-------------------------------------------// 
+/*           Weighted Rank Filter
+            CLE - First Assignment
+
+                by
+
+        Carlos Oliveira (88702) (carlosmbo@ua.pt)
+                and
+        João Caires (89094) (?@ua.pt)
+
+
+*/
+//-------------------------------------------// 
+
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <cuda.h>
+#include <iostream>
 #include <unistd.h>
 #include <math.h>
+#include <device_launch_parameters.h>
+
+// Load the BMP Library
 extern "C"
 {
     #include "qdbmp.h"    
 }
-#include <device_launch_parameters.h>
 
-
+// Define CUDA Kernel's launch Block Size
 #define BLOCKSIZE_X 32
 #define BLOCKSIZE_Y 32
-#define KNRM  "\x1B[0m"
+
+// Some colour codes for the terminal
+
 #define KRED  "\x1B[31m"
 #define KGRN  "\x1B[32m"
-#define KYEL  "\x1B[33m"
-#define KBLU  "\x1B[34m"
-#define KMAG  "\x1B[35m"
 #define KCYN  "\x1B[36m"
-#define KWHT  "\x1B[37m"
 #define RESET "\x1B[0m"
 
 using namespace std;
@@ -33,10 +49,25 @@ UINT iDivUp(UINT hostPtr, UINT b)
      return ((hostPtr % b) != 0) ? (hostPtr / b + 1) : (hostPtr / b); 
 }
 
-// Device Kernels
+/*****************/
+/* CUDA MEMCHECK */
+/*****************/
+#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 
-//Texture reference Declaration
-texture<float,2> texRefEx;
+inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort = true)
+{
+    if (code != cudaSuccess)
+    {
+        fprintf(stderr, "GPUassert: %s %s %dn", cudaGetErrorString(code), file, line);
+        if (abort) { getchar(); exit(code); }
+    }
+}
+
+
+
+/****************************/
+/* Convert RGB to Greyscale */
+/****************************/
 
 __host__ __device__ float greymaker (float rgb)
 {  
@@ -54,18 +85,22 @@ __host__ __device__ float greymaker (float rgb)
     return grey;
 }
 
+//Texture reference Declaration
+texture<float,2> texref;
 
-__global__ void kernel_w_textures(float* devMPPtr, float * devMPtr, int pitch, int width, int height)
+__global__ void wrf_textures(float* devMPPtr, float * devMPtr, int pitch, int width, int height, int filter_grid_size)
 {
 
    
     // Thread indexes
     unsigned int idx = blockIdx.x*blockDim.x + threadIdx.x;
     unsigned int idy = blockIdx.y*blockDim.y + threadIdx.y;
+
+    // Declaring some variables and arrays for later use
     float greyarrey[25];
     float greyarrey_new[25];
-    int grid_size = 9;
-    float average;
+    
+    
     
     
     if((idx < width)  && (idy < height)){
@@ -78,52 +113,51 @@ __global__ void kernel_w_textures(float* devMPPtr, float * devMPtr, int pitch, i
 
         devMPtr[idy*width+idx]=devMPPtr[idy*pitch/sizeof(float)+idx];
         // Write Texture Contents to malloc array +1
-        //printf(" %f ", tex2D(texRefEx,u,v));
-
-        -(2*u_offset)
-        
-        //3x3
-        greyarrey[0] = greymaker(tex2D(texRefEx,u,                  v));
-        greyarrey[1] = greymaker(tex2D(texRefEx,u,                  v-(2*v_offset)));
-        greyarrey[2] = greymaker(tex2D(texRefEx,u+(2*u_offset),     v));
-        greyarrey[3] = greymaker(tex2D(texRefEx,u,                  v+(2*v_offset)));
-        greyarrey[4] = greymaker(tex2D(texRefEx,u+(2*u_offset),     v));
-        greyarrey[5] = greymaker(tex2D(texRefEx,u-(2*u_offset),     v-(2*v_offset)));
-        greyarrey[6] = greymaker(tex2D(texRefEx,u+(2*u_offset),     v-(2*v_offset)));
-        greyarrey[7] = greymaker(tex2D(texRefEx,u+(2*u_offset),     v+(2*v_offset)));
-        greyarrey[8] = greymaker(tex2D(texRefEx,u-(2*u_offset),     v+(2*v_offset)));
-        greyarrey[9] = greymaker(tex2D(texRefEx,u,                  v+(4*v_offset)));
-        greyarrey[10] = greymaker(tex2D(texRefEx,u+(4*u_offset),    v));
-        greyarrey[11] = greymaker(tex2D(texRefEx,u,                 v+(4*v_offset)));
-        greyarrey[12] = greymaker(tex2D(texRefEx,u,v));
-        greyarrey[13] = greymaker(tex2D(texRefEx,u,v));
-        greyarrey[14] = greymaker(tex2D(texRefEx,u,v));
-        greyarrey[15] = greymaker(tex2D(texRefEx,u,v));
-        greyarrey[16] = greymaker(tex2D(texRefEx,u,v));
-        greyarrey[17] = greymaker(tex2D(texRefEx,u,v));
-        greyarrey[18] = greymaker(tex2D(texRefEx,u,v));
-        greyarrey[19] = greymaker(tex2D(texRefEx,u,v));
-        greyarrey[20] = greymaker(tex2D(texRefEx,u,v));
-        greyarrey[21] = greymaker(tex2D(texRefEx,u,v));
-        greyarrey[22] = greymaker(tex2D(texRefEx,u,v));
-        greyarrey[23] = greymaker(tex2D(texRefEx,u,v));
-        greyarrey[24] = greymaker(tex2D(texRefEx,u,v));
-
-
+        //printf(" %f ", tex2D(texref,u,v));
 
         
+        
+    //3x3 sem cantos
+        greyarrey[0] = greymaker(tex2D(texref,     u,                       v                  ));
+        greyarrey[1] = greymaker(tex2D(texref,     u,                       v - ( 2 * v_offset)));
+        greyarrey[2] = greymaker(tex2D(texref,     u + ( 2 * u_offset),     v                  ));
+        greyarrey[3] = greymaker(tex2D(texref,     u,                       v + ( 2 * v_offset)));
+        greyarrey[4] = greymaker(tex2D(texref,     u + ( 2 * u_offset),     v                  ));
+    //3x3 com cantos
+        greyarrey[5] = greymaker(tex2D(texref,     u - ( 2 * u_offset),     v - ( 2 * v_offset)));
+        greyarrey[6] = greymaker(tex2D(texref,     u + ( 2 * u_offset),     v - ( 2 * v_offset)));
+        greyarrey[7] = greymaker(tex2D(texref,     u + ( 2 * u_offset),     v + ( 2 * v_offset)));
+        greyarrey[8] = greymaker(tex2D(texref,     u - ( 2 * u_offset),     v + ( 2 * v_offset)));
+    //5x5 sem cantos
+        greyarrey[9] = greymaker(tex2D(texref,     u,                       v - ( 4 * v_offset)));
+        greyarrey[10] = greymaker(tex2D(texref,    u + ( 4 * u_offset),     v                  ));
+        greyarrey[11] = greymaker(tex2D(texref,    u,                       v + ( 4 * v_offset)));
+        greyarrey[12] = greymaker(tex2D(texref,    u - ( 4 * u_offset),     v                  ));
+        greyarrey[13] = greymaker(tex2D(texref,    u + ( 2 * u_offset),     v - ( 4 * v_offset)));
+        greyarrey[14] = greymaker(tex2D(texref,    u + ( 4 * u_offset),     v - ( 2 * v_offset)));
+        greyarrey[15] = greymaker(tex2D(texref,    u + ( 4 * u_offset),     v + ( 2 * v_offset)));
+        greyarrey[16] = greymaker(tex2D(texref,    u + ( 2 * u_offset),     v + ( 4 * v_offset)));
+        greyarrey[17] = greymaker(tex2D(texref,    u - ( 2 * u_offset),     v + ( 4 * v_offset)));
+        greyarrey[18] = greymaker(tex2D(texref,    u - ( 4 * u_offset),     v + ( 2 * v_offset)));
+        greyarrey[19] = greymaker(tex2D(texref,    u - ( 4 * u_offset),     v - ( 2 * v_offset)));
+        greyarrey[20] = greymaker(tex2D(texref,    u - ( 2 * u_offset),     v - ( 4 * v_offset)));
+    //5x5 com cantos
+        greyarrey[21] = greymaker(tex2D(texref,     u + ( 4 * u_offset),     v - ( 4 * v_offset)));
+        greyarrey[22] = greymaker(tex2D(texref,     u + ( 4 * u_offset),     v + ( 4 * v_offset)));
+        greyarrey[23] = greymaker(tex2D(texref,     u - ( 4 * u_offset),     v + ( 4 * v_offset)));
+        greyarrey[24] = greymaker(tex2D(texref,     u - ( 4 * u_offset),     v - ( 4 * v_offset)));
+
 
         __syncthreads();
 
-        for(int copy_iterator = 0;copy_iterator<grid_size;copy_iterator++)
+        for(int copy_iterator = 0;copy_iterator<filter_grid_size;copy_iterator++)
             {
                 greyarrey_new[copy_iterator] = greyarrey [copy_iterator];
             }
 
-        
-        
-        int c,d,t;
-        for (c = 1 ; c < 9; c++) {
+        int c,d;
+        float t;
+        for (c = 1 ; c < filter_grid_size; c++) {
             d = c;
          
             while ( d > 0 && greyarrey_new[d-1] > greyarrey_new[d]) {
@@ -137,218 +171,286 @@ __global__ void kernel_w_textures(float* devMPPtr, float * devMPtr, int pitch, i
         
         __syncthreads();
 
-        for (i=0;i<grid_size;i++)
+        for (int i=0;i<filter_grid_size;i++)
         {
-            if(greyarrey_new[4]==greyarrey[i])
+            if(greyarrey_new[(filter_grid_size+1)/2]==greyarrey[i])
             switch(i)
             {
+            //3x3 sem cantos
                 case 0:
-                    devMPtr[idy*width+idx] = tex2D(texRefEx,u,v);
-                    break;                
-                case 1:
-                    devMPtr[idy*width+idx] = tex2D(texRefEx,u-(2*u_offset),v);
+                    devMPtr [idy*width+idx] = tex2D(texref,     u,                       v                  );
                     break;
-                case 2:
-                    devMPtr[idy*width+idx] = tex2D(texRefEx,u-(2*u_offset),v+(2*v_offset));
+                case 1:
+                    devMPtr [idy*width+idx] = tex2D(texref,     u,                       v - ( 2 * v_offset));
+                    break;
+                case 2: 
+                    devMPtr [idy*width+idx] = tex2D(texref,     u + ( 2 * u_offset),     v                  );
                     break;
                 case 3:
-                    devMPtr[idy*width+idx] = tex2D(texRefEx,u,v-(2*v_offset));
+                    devMPtr [idy*width+idx] = tex2D(texref,     u,                       v + ( 2 * v_offset));
+                    break; 
+                case  4:
+                    devMPtr [idy*width+idx] = tex2D(texref,     u + ( 2 * u_offset),     v                  );
                     break;
-                case 4:
-                    devMPtr[idy*width+idx] = tex2D(texRefEx,u-(2*u_offset),v-(2*v_offset));
-                    break;              
-                case 5:
-                    devMPtr[idy*width+idx] = tex2D(texRefEx,u,v+(2*v_offset));
-                    break;
-                case 6:
-                    devMPtr[idy*width+idx] = tex2D(texRefEx,u+(2*u_offset),v-(2*v_offset));
-                    break;
-                case 7:
-                    devMPtr[idy*width+idx] = tex2D(texRefEx,u+(2*u_offset),v);
-                    break;
-                case 8:
-                    devMPtr[idy*width+idx] = tex2D(texRefEx,u+(2*u_offset),v+(2*v_offset));
-                    break;
+            //3x3 com cantos
+                case  5:
+                    devMPtr [idy*width+idx] = tex2D(texref,     u - ( 2 * u_offset),     v - ( 2 * v_offset));
+                    break; 
+                case  6:
+                    devMPtr [idy*width+idx] = tex2D(texref,     u + ( 2 * u_offset),     v - ( 2 * v_offset));
+                    break; 
+                case  7:
+                    devMPtr [idy*width+idx] = tex2D(texref,     u + ( 2 * u_offset),     v + ( 2 * v_offset));
+                    break; 
+                case  8:
+                    devMPtr [idy*width+idx] = tex2D(texref,     u - ( 2 * u_offset),     v + ( 2 * v_offset));
+            //5x5 sem cantos
+                    break; 
+                case  9:
+                    devMPtr [idy*width+idx] = tex2D(texref,     u,                       v - ( 4 * v_offset));
+                    break; 
+                case  10:
+                    devMPtr [idy*width+idx] = tex2D(texref,    u + ( 4 * u_offset),     v                  );
+                    break; 
+                case  11:
+                    devMPtr [idy*width+idx] = tex2D(texref,    u,                       v + ( 4 * v_offset));
+                    break; 
+                case  12:
+                    devMPtr [idy*width+idx] = tex2D(texref,    u - ( 4 * u_offset),     v                  );
+                    break; 
+                case  13:
+                    devMPtr [idy*width+idx] = tex2D(texref,    u + ( 2 * u_offset),     v - ( 4 * v_offset));
+                    break; 
+                case  14:
+                    devMPtr [idy*width+idx] = tex2D(texref,    u + ( 4 * u_offset),     v - ( 2 * v_offset));
+                    break; 
+                case  15:
+                    devMPtr [idy*width+idx] = tex2D(texref,    u + ( 4 * u_offset),     v + ( 2 * v_offset));
+                    break; 
+                case  16:
+                    devMPtr [idy*width+idx] = tex2D(texref,    u + ( 2 * u_offset),     v + ( 4 * v_offset));
+                    break; 
+                case  17:
+                    devMPtr [idy*width+idx] = tex2D(texref,    u - ( 2 * u_offset),     v + ( 4 * v_offset));
+                    break; 
+                case  18:
+                    devMPtr [idy*width+idx] = tex2D(texref,    u - ( 4 * u_offset),     v + ( 2 * v_offset));
+                    break; 
+                case  19:
+                    devMPtr [idy*width+idx] = tex2D(texref,    u - ( 4 * u_offset),     v - ( 2 * v_offset));
+                    break; 
+                case  20:
+                    devMPtr [idy*width+idx] = tex2D(texref,    u - ( 2 * u_offset),     v - ( 4 * v_offset));
+            //5x5 com cantos
+                    break; 
+                case  21:
+                    devMPtr [idy*width+idx] = tex2D(texref,     u + ( 4 * u_offset),     v - ( 4 * v_offset));
+                    break; 
+                case  22:
+                    devMPtr [idy*width+idx] = tex2D(texref,     u + ( 4 * u_offset),     v + ( 4 * v_offset));
+                    break; 
+                case  23:
+                    devMPtr [idy*width+idx] = tex2D(texref,     u - ( 4 * u_offset),     v + ( 4 * v_offset));
+                    break; 
+                case  24:
+                    devMPtr [idy*width+idx] = tex2D(texref,     u - ( 4 * u_offset),     v - ( 4 * v_offset));
+                    break;    
                 default:
                     printf(KRED "  \n\n ERROR IN SWITCH CASE: KERNEL! \n\n" RESET);
                     
             }
             
         }
-
-        //printf(" [%i,%i] %f \n", idx,idy,greyarrey[4] );
-
         __syncthreads();
       
-        
-        /*
-        int red,green,blue,inv_red,inv_green,inv_blue;
-        float value;
-        value = greyarrey[4];
-        red = floor(value / 256.0 / 256.0);
-        green = floor((value - (red*256*256))/256);
-        blue = floor( value - (red*256*256)-(green*256));
-
-        inv_red = 255-red;
-        inv_green = 255-green;
-        inv_blue = 255-blue;
-        /*
-        float new_value = (float)
-        printf("[%i,%i][%f,%f] = [%f] %i(%i) %i(%i) %i(%i) \n",idx,idy,u,v,value,red,inv_red,green,inv_green,blue,inv_blue);
-        */
-        //printf("Arrey: %f | Tex2D: %f \n ",greymaker(tex2D(texRefEx,u,v)),tex2D(texRefEx,u,v));
-        
-        //devMPtr[idy*width+idx]= tex2D(texRefEx,u,v) ;//+1.0f;
     }
 }
 
-int main()
+int main( int argc,char *argv[] )
 {
-    int width;
-    int height;
+    // Some variables
+    int width,height;           // Declaring for later assignment
+    int filter_grid_size = 25;  //Size of the filter (5,9,21,25);
+
+    int ir,ig,ib;               // Placeholder for RGB decomposition/composition in int
+    float fr,fg,fb;             // Placeholder for RGB decomposition/composition in float   
+
+    // BMP-related variables
     BMP* bmp;
-    UCHAR r, g, b;
-    int ir,ig,ib;
-    float fr,fg,fb;
+    UCHAR r, g, b;  
     UINT Nrows,Ncols;
-    
 
-     /* Read an image file */
+    /* Read an image file */
     
-     printf(" Reading the image file... \n");
-   
-     bmp = BMP_ReadFile( "image.bmp" );
+    printf(" [INFO] Reading the image file...\n");    
+    bmp = BMP_ReadFile( "image.bmp" );
+    
+    
+    BMP_CHECK_ERROR( stderr, -1 ); 
+    /* If an error has occurred, notify and exit */
+    printf(KGRN" [GOOD] File successfully read!\n"RESET);  
+
+    /* Get image's dimensions */    
+    Ncols = BMP_GetWidth( bmp );
+    Nrows = BMP_GetHeight( bmp );
      
-     BMP_CHECK_ERROR( stderr, -1 ); 
-     /* If an error has occurred, notify and exit */
-     /* Get image's dimensions */
-     
-     Ncols = BMP_GetWidth( bmp );
-     Nrows = BMP_GetHeight( bmp );
-   
-     width = (int) Ncols;
-     height = (int) Nrows;   
+
+    // Assign dimension values to the int's:
+    width = (int) Ncols;
+    height = (int) Nrows;
+
+    printf(" [INFO] Image: Width: "KGRN"%i"RESET"   Height: "KGRN"%i"RESET"\n",width,height); 
+    
+    /* Define memory needed for image */
+    // memory size
+    size_t memsize=width*height;
+    size_t offset;
+    size_t pitch;
+
+    // Arrays to store the data (their pointers)
+    float   *data, // input from host (Image goes here)
+            *h_out, // host space for output (Ready to send to kernel)
+            *devMPPtr, // malloc Pitch ptr
+            *devMPtr; // malloc ptr
+
+    // Allocate space on the host
+    printf(" [INFO] Allocating space on the host...\n");
+
+    data=(float *)malloc(sizeof(float)*memsize);
+    h_out=(float *)malloc(sizeof(float)*memsize);
+
+    printf(KGRN" [GOOD] Space successfully alocated!\n"RESET);  
+
     
 
- // memory size
- size_t memsize=width*height;
- size_t offset;
-float * data,  // input from host
- *h_out, // host space for output
- *devMPPtr, // malloc Pitch ptr
-  *devMPtr; // malloc ptr
-
- size_t pitch;
-
- // Allocate space on the host
- data=(float *)malloc(sizeof(float)*memsize);
- h_out=(float *)malloc(sizeof(float)*memsize);
-
-
-// Define data
-for (int i = 0; i <  height; i++)
-{
-    for (int j=0; j < width; j++)
+    // Convert RGB values to a floating point (255/255/255 to 0-16777216)
+    printf(" [INFO] Reading image into array, converting from RGB to FP...\n");
+    for (int i = 0; i <  height; i++)
     {
-    BMP_GetPixelRGB( bmp, j, i, &r, &g, &b );    
-    ir = (int)r;    ig = (int)g;    ib = (int)b;
-    //printf("I %i, %i, %i \t",ir,ig,ib);
-    fr = (float)((float)ir);    fg = (float)((float)ig);  fb = (float)((float)ib);
-    //printf("F %f, %f, %f \t",fr,fg,fb);
-    //Put the rgb values inside a single value, to send to the array
-    
-    
-    data[i*width+j]=fr*256*256 + fg * 256 + fb;
+        for (int j=0; j < width; j++)
+        {
+            // Get the Red, Green and Blue values from the pixel in (j,i)
+            BMP_GetPixelRGB( bmp, j, i, &r, &g, &b );
+
+            // Send them through some variables to convert from UINT to int
+            ir = (int)r;    ig = (int)g;    ib = (int)b;
+
+            // Send them through some variables to convert from int to float
+            fr = (float)((float)ir);    fg = (float)((float)ig);  fb = (float)((float)ib);
+            
+            //Put the rgb values inside a single value ( 0.00 - 16,777,216.00 ), to send to the array  
+            data[i*width+j] = fr*256*256 + fg * 256 + fb; // Red_Value x 256^2 + Green_Value x 256 + Blue_Value
+        }        
     }
-    //printf("\n");
-}
+    printf(KGRN" [GOOD] Image successfully read and converted!\n"RESET);  
 
-// Define the grid
-dim3 gridSize((int)(width/BLOCKSIZE_X)+1,(int)(height/BLOCKSIZE_Y)+1);
-dim3 blockSize(BLOCKSIZE_X, BLOCKSIZE_Y);
 
-// allocate Malloc Pitch
-cudaMallocPitch((void**)&devMPPtr,&pitch, width * sizeof(float), height);
+    printf(" [INFO] Defining Grid, allocating memory, binding textures, setting their properties... \n");
+    // Define the grid
+    dim3 gridSize((int)(width/BLOCKSIZE_X)+1,(int)(height/BLOCKSIZE_Y)+1);
+    dim3 blockSize(BLOCKSIZE_X, BLOCKSIZE_Y);
 
-// Print the pitch
-//printf("The pitch is %d \n",pitch/sizeof(float));
-
-// Texture Channel Description
-//cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<float>();
-cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32,0,0,0,cudaChannelFormatKindFloat);
-
-// Bind texture to pitch mem:
-cudaBindTexture2D(&offset,&texRefEx,devMPPtr,&channelDesc,width,height,pitch);
-/*
-printf("My Description x is %i\n",channelDesc.x);
-printf("My Description y is %i\n",channelDesc.y);
-printf("My Description z is %i\n",channelDesc.z);
-printf("My Description w is %i\n",channelDesc.w);;
-printf("My Description kind is %i\n",channelDesc.x);
-printf("Offset is %i \n",offset);
-*/ 
-
-// Set mutable properties:
-texRefEx.normalized=true;
-texRefEx.addressMode[0]=cudaAddressModeMirror;
-texRefEx.addressMode[1]=cudaAddressModeMirror;
-texRefEx.filterMode= cudaFilterModePoint;
-
-// Allocate cudaMalloc memory
-cudaMalloc((void**)&devMPtr,memsize*sizeof(float));
-
-// Read data from host to device
-cudaMemcpy2D((void*)devMPPtr,pitch,(void*)data,sizeof(float)*width,
-  sizeof(float)*width,height,cudaMemcpyHostToDevice);
-
-//Read back and check this memory
-cudaMemcpy2D((void*)h_out,width*sizeof(float),(void*)devMPPtr,pitch,
-  sizeof(float)*width,height,cudaMemcpyDeviceToHost);
-
-// Print the memory
- for (int i=0; i<height; i++){
-  for (int j=0; j<width; j++){
-    int red,green,blue;
-    red = floor(h_out[i*width+j] / 256.0 / 256.0);
-    green = floor((h_out[i*width+j] - (red*256*256))/256);
-    blue = floor( h_out[i*width+j] - (red*256*256)-(green*256));
-    //printf("data[%i,%i] = %i %i %i \t",i,j,red,green,blue);
+    // Allocate Malloc Pitch
+    cudaMallocPitch((void**)&devMPPtr,&pitch, width * sizeof(float), height);
     
-   //printf("%f ",h_out[i*width+j]);
-  }
- //printf("\n");
- }
+    // Texture Channel Description    
+    cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32,0,0,0,cudaChannelFormatKindFloat);
 
- printf("\n DONE \n");
-// Memory is fine... 
+    // Bind texture to pitch memory:
+    cudaBindTexture2D(&offset,&texref,devMPPtr,&channelDesc,width,height,pitch);
 
-kernel_w_textures<<<gridSize,blockSize>>>(devMPPtr, devMPtr, pitch,width,height);
-//gpuErrchk(cudaPeekAtLastError());
-//gpuErrchk(cudaDeviceSynchronize());
+    // Set mutable properties:
+    texref.normalized=true;
+    texref.addressMode[0]=cudaAddressModeMirror;
+    texref.addressMode[1]=cudaAddressModeMirror;
+    texref.filterMode= cudaFilterModePoint;
 
-// Copy back data to host
-cudaMemcpy((void*)h_out,(void*)devMPtr,width*height*sizeof(float),cudaMemcpyDeviceToHost);
+    // Allocate cudaMalloc memory
+    cudaMalloc((void**)&devMPtr,memsize*sizeof(float));
+
+    printf(KGRN" [GOOD] Done! \n"RESET);  
 
 
-// Print the Result
-for (int i=0; i<height; i++){
-    for (int j=0; j<width; j++){
-      int red,green,blue;
-      red = floor(h_out[i*width+j] / 256.0 / 256.0);
-      green = floor((h_out[i*width+j] - (red*256*256))/256);
-      blue = floor( h_out[i*width+j] - (red*256*256)-(green*256));
-      //printf("data[%i,%i] = %i %i %i \t",i,j,red,green,blue);
-      BMP_SetPixelRGB( bmp, j, i,(int)red, (int)green, (int)blue);
-     //printf("%f ",h_out[i*width+j]);
+    printf(" [INFO] Copying data to device and reading it back... \n");
+
+    // Read data from host to device
+    cudaMemcpy2D((void*)devMPPtr,pitch,(void*)data,sizeof(float)*width,sizeof(float)*width,height,cudaMemcpyHostToDevice);
+
+    //Read back and check this memory
+    cudaMemcpy2D((void*)h_out,width*sizeof(float),(void*)devMPPtr,pitch,sizeof(float)*width,height,cudaMemcpyDeviceToHost);
+
+    // Print the memory after allocating
+        /*
+        for (int i=0; i<height; i++)
+        {
+            for (int j=0; j<width; j++)
+            {
+                int red,green,blue;
+                red = floor(h_out[i*width+j] / 256.0 / 256.0);
+                green = floor((h_out[i*width+j] - (red*256*256))/256);
+                blue = floor( h_out[i*width+j] - (red*256*256)-(green*256));
+                printf("data[%i,%i] = %i %i %i \t",i,j,red,green,blue);
+                
+                printf("%f ",h_out[i*width+j]);
+            }
+            printf("\n");
+        }
+        */
+    printf(KGRN" [GOOD] Done! \n"RESET);
+
+
+
+    /*********************/
+    // Launch the Kernel //
+    /*********************/
+     
+    printf(" [INFO] Copying data to device and reading it back... \n");
+    wrf_textures<<<gridSize,blockSize>>>(devMPPtr, devMPtr, pitch,width,height,filter_grid_size);
+    
+    // Check for errors
+    gpuErrchk(cudaPeekAtLastError());
+    gpuErrchk(cudaDeviceSynchronize());
+
+    printf(KGRN" [GOOD] Done! \n"RESET);
+
+    // Copy back data to host
+    printf(" [INFO] Copying data from device and reading it back... \n");
+    cudaMemcpy((void*)h_out,(void*)devMPtr,width*height*sizeof(float),cudaMemcpyDeviceToHost);
+
+
+    // Save the result on the BMP file
+    
+    for (int i=0; i<height; i++)
+    {
+        for (int j=0; j<width; j++)
+        {
+            int red,green,blue;
+            red =   floor( h_out[i*width+j] / 256.0 / 256.0);
+            green = floor((h_out[i*width+j] - (red*256*256))/256);
+            blue =  floor( h_out[i*width+j] - (red*256*256)-(green*256));
+
+            // printf("data[%i,%i] = %i %i %i \t",i,j,red,green,blue);
+
+            BMP_SetPixelRGB( bmp, j, i,(int)red, (int)green, (int)blue);
+
+            // printf("%f ",h_out[i*width+j]);
+        }
+        //printf("\n");
     }
-   //printf("\n");
-   }
-   BMP_WriteFile( bmp, "image.bmp" );
-   printf("  \x1B[32m Image output is ready! \n \x1B[0m");
-   BMP_CHECK_ERROR( stderr, -2 );
-   /* Free all memory allocated for the image */
-   BMP_Free( bmp );    
-   printf("\n DONE \n");
+    printf(KGRN" [GOOD] Done! \n"RESET);
 
-return(0);
+    // Write the resulting image to a file:
+    printf(" [INFO] Writing results to file... \n");
+    BMP_WriteFile( bmp, "image.bmp" );
+    
+    // Check for errors
+    BMP_CHECK_ERROR( stderr, -2 );
+    printf(KGRN" [GOOD] Done! \n"RESET);
+
+    // Free all memory allocated for the image
+    BMP_Free( bmp );   
+
+    printf(KGRN" [GOOD] Program Terminated Successfully! \n"RESET);
+
+    return(0);
 }
